@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Middleware template
+
+Parameters:
+  Environment:
+    Type: String
+    Default: test
+    AllowedValues: [ "test", "prod" ]
+  ImageId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: mykey
+
+Resources:
+
+  MiddlewareLoadBalancer:
+    Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    Properties:
+      Type: application
+      Subnets:
+        - !ImportValue MiddlewareSubnet1Id
+        - !ImportValue MiddlewareSubnet2Id
+        - !ImportValue MiddlewareSubnet3Id
+      Scheme: internal
+      SecurityGroups:
+        - !Ref MiddlewareLbSg
+      Tags:
+        - Key: Env
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Join [ "-", [ !Ref Environment, !Ref "AWS::StackName", "lb" ] ]
+
+  MiddlewareInstanceLaunchTemplate:
+    Type: "AWS::EC2::LaunchTemplate"
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref ImageId
+        InstanceType: t3.micro
+        KeyName: !Ref KeyName
+        SecurityGroupIds:
+          - !Ref MiddlewareInstanceSg
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Env
+                Value: !Ref Environment
+              - Key: Name
+                Value: !Join [ "-", [ !Ref Environment, !Ref "AWS::StackName", "lt" ] ]
+
+  MiddlewareLbSg:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: LoadBalancer Security Group
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          SourceSecurityGroupId: !ImportValue WebInstanceSg
+          FromPort: 80
+          ToPort: 80
+      VpcId: !ImportValue VpcId
+      Tags:
+        - Key: Env
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Join [ "-", [ !Ref Environment, !Ref "AWS::StackName", "lb-sg" ] ]
+
+  MiddlewareInstanceSg:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: Middleware Instance SG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          SourceSecurityGroupId: !Ref MiddlewareLbSg
+          FromPort: 80
+          ToPort: 80
+      VpcId: !ImportValue VpcId
+      Tags:
+        - Key: Env
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Join [ "-", [ !Ref Environment, !Ref "AWS::StackName", "inst-sg" ] ]
+
+  MiddlewareAsg:
+    DependsOn: MiddlewareLbListener
+    Type: "AWS::AutoScaling::AutoScalingGroup"
+    Properties:
+      MaxSize: !Join [":", [ "{{resolve:ssm", !ImportValue MiddlewareMaxSizeParameter, "1}}"]]
+      MinSize: !Join [":", [ "{{resolve:ssm", !ImportValue MiddlewareMinSizeParameter, "1}}"]]
+      DesiredCapacity: !Join [":", [ "{{resolve:ssm", !ImportValue MiddlewareDesSizeParameter, "1}}"]]
+      VPCZoneIdentifier:
+        - !ImportValue MiddlewareSubnet1Id
+        - !ImportValue MiddlewareSubnet2Id
+        - !ImportValue MiddlewareSubnet3Id
+      LaunchTemplate:
+        LaunchTemplateId: !Ref MiddlewareInstanceLaunchTemplate
+        Version: "1"
+      TargetGroupARNs:
+        - !Ref MiddlewareTg
+      Tags:
+        - Key: Env
+          Value: !Ref Environment
+          PropagateAtLaunch: True
+        - Key: Name
+          Value: !Join [ "-", [ !Ref Environment, !Ref "AWS::StackName", "asg" ] ]
+          PropagateAtLaunch: True
+
+  MiddlewareLbListener:
+    Type: "AWS::ElasticLoadBalancingV2::Listener"
+    Properties:
+      LoadBalancerArn: !Ref MiddlewareLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: "forward"
+          TargetGroupArn: !Ref MiddlewareTg
+
+  MiddlewareTg:
+    Type: "AWS::ElasticLoadBalancingV2::TargetGroup"
+    Properties:
+      Port: 80
+      Protocol: HTTP
+      VpcId: !ImportValue VpcId
+      Tags:
+        - Key: Env
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Join [ "-", [ !Ref Environment, !Ref "AWS::StackName", "lb-tg" ] ]
+
+Outputs:
+  MiddlewareInstanceSg:
+    Value: !Ref MiddlewareInstanceSg
+    Export:
+      Name: MiddlewareInstanceSg

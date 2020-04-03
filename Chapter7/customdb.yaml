@@ -1,0 +1,34 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Custom DB
+Parameters:
+  DBName:
+    Type: String
+    Default: mydb
+
+  DBUser:
+    Type: String
+    Default: mydbuser
+
+  DBPassword:
+    Type: String
+    Default: foobar1234
+
+  RdsUser:
+    Type: String
+    Default: rdsuser
+
+  RdsPassword:
+    Type: String
+    Default: barfoo12344321
+
+Resources:
+  CustomDb:
+    Type: "Custom::DB"
+    Properties:
+      ServiceToken: !ImportValue CrArn
+      DBName: !Ref DBName
+      DBUser: !Ref DBUser
+      DBPassword: !Ref DBPassword
+      RDSEndpoint: !ImportValue RdsEndpoint
+      RDSUser: !Ref RdsUser
+      RDSPassword: !Ref RdsPassword

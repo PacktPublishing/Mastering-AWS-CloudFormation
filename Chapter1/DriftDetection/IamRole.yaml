@@ -1,0 +1,25 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "This is a dummy role"
+Resources:
+  IamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AllowAssumeRole
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Join
+                  - ""
+                  - - "arn:aws:iam::"
+                    - !Ref "AWS::AccountId"
+                    - ":user/Admin"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AmazonEC2FullAccess"
+        - "arn:aws:iam::aws:policy/AWSCloudFormationFullAccess"
+Outputs:
+  IamRole:
+    Value: !GetAtt IamRole.Arn

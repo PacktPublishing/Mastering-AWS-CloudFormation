@@ -1,0 +1,14 @@
+Transform: StandardApplication
+Resources:
+  Application:
+    Properties:
+      ApplicationImage: "nginx:latest"
+      TaskCount: 1
+      Memory: 512
+      CPU: 256
+      ApplicationPort: 80
+#      RDSEngine: ""
+#      RDSSize: ""
+#      RDSMultiAz: False
+#      NeedsBalancer: False
+#      PubliclyAvailable: False

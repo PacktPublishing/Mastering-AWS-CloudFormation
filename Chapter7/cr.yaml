@@ -1,0 +1,51 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CustomResource function template
+Parameters:
+  S3Bucket:
+    Type: String
+    Default: "masteringcloudformation"
+  S3Key:
+    Type: String
+    Default: "lambda-cr.zip"
+Resources:
+
+  CrFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !Ref S3Key
+      Handler: "customdb.handler"
+      Runtime: python3.7
+      Timeout: 30
+      Role: !GetAtt CrRole.Arn
+
+  CrRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+
+Outputs:
+  CrArn:
+    Value: !GetAtt CrFunction.Arn
+    Export:
+      Name: CrArn

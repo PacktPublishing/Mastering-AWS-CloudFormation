@@ -1,0 +1,171 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CI/CD pipeline template
+Resources:
+
+  CfnRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "cloudformation.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AdministratorAccess"
+
+  Repository:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: core
+
+  TemplateBucket:
+    Type: AWS::S3::Bucket
+
+  BuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AllowAssumeRole
+            Effect: Allow
+            Principal:
+              Service: "codebuild.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Sid: CodeBuild
+                Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                  - "codecommit:GitPull"
+                  - "s3:GetObject"
+                  - "s3:GetObjectVersion"
+                  - "s3:PutObject"
+                  - "ecr:BatchCheckLayerAvailability"
+                  - "ecr:GetDownloadUrlForLayer"
+                  - "ecr:BatchGetImage"
+                  - "ecr:GetAuthorizationToken"
+                  - "s3:GetBucketAcl"
+                  - "s3:GetBucketLocation"
+                  - "cloudformation:*"
+                  - "iam:PassRole"
+                  - "ec2:Describe*"
+                Resource: "*"
+          PolicyName: BuildPolicy
+
+  Build:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      ServiceRole: !GetAtt BuildRole.Arn
+      Name: Core
+      Source:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:2.0
+        EnvironmentVariables:
+          - Name: CFN_ROLE
+            Type: PLAINTEXT
+            Value: !GetAtt CfnRole.Arn
+
+
+  PipelineRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "codepipeline.amazonaws.com"
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: CodePipeline
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'codecommit:CancelUploadArchive'
+                  - 'codecommit:GetBranch'
+                  - 'codecommit:GetCommit'
+                  - 'codecommit:GetUploadArchiveStatus'
+                  - 'codecommit:UploadArchive'
+                  - 'codebuild:BatchGetBuilds'
+                  - 'codebuild:StartBuild'
+                  - 'cloudwatch:*'
+                  - 'cloudformation:*'
+                  - "s3:*"
+                  - "iam:PassRole"
+                Resource: '*'
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      RoleArn: !GetAtt PipelineRole.Arn
+      ArtifactStore:
+        Location: !Ref TemplateBucket
+        Type: S3
+      Name: Core
+      Stages:
+        -
+          Name: Clone
+          Actions:
+            - ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeCommit
+                Version: "1"
+              Name: Clone
+              OutputArtifacts:
+                - Name: CloneOutput
+              Configuration:
+                BranchName: master
+                RepositoryName: !GetAtt Repository.Name
+              RunOrder: 1
+        -
+          Name: Build
+          Actions:
+            - Name: Build
+              InputArtifacts:
+                - Name: CloneOutput
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: "1"
+                Provider: CodeBuild
+              OutputArtifacts:
+                - Name: BuildOutput
+              Configuration:
+                ProjectName: !Ref Build
+              RunOrder: 1
+        -
+          Name: Deploy
+          Actions:
+            - Name: Deploy
+              InputArtifacts:
+                - Name: BuildOutput
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: "1"
+                Provider: CloudFormation
+              OutputArtifacts:
+                - Name: DeployOutput
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                RoleArn: !GetAtt CfnRole.Arn
+                Capabilities: CAPABILITY_NAMED_IAM
+                StackName: Core
+                TemplatePath: BuildOutput::core.yaml

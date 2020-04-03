@@ -1,0 +1,47 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: DB instance
+
+Parameters:
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+
+  RdsUser:
+    Type: String
+    Default: rdsuser
+
+  RdsPassword:
+    Type: String
+    Default: barfoo12344321
+
+Resources:
+
+  RdsSg:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: allow incoming traffic
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 0.0.0.0/0
+
+  RdsDatabase:
+    Type: "AWS::RDS::DBInstance"
+    Properties:
+      Engine: MySQL
+      EngineVersion: "5.7.22"
+      DBInstanceClass: db.t2.micro
+      MasterUsername: !Ref RdsUser
+      MasterUserPassword: !Ref RdsPassword
+      PubliclyAccessible: True
+      AllocatedStorage: 8
+      VPCSecurityGroups:
+        - !GetAtt RdsSg.GroupId
+
+Outputs:
+  RdsEndpoint:
+    Value: !GetAtt RdsDatabase.Endpoint.Address
+    Export:
+      Name: RdsEndpoint

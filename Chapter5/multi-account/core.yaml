@@ -1,0 +1,403 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Core template. Contains network and iam roles
+Parameters:
+  VpcCidr:
+    Type: String
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    Default: 10.0.0.0/16
+
+Resources:
+
+  Vpc:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: !Ref 'VpcCidr'
+      EnableDnsHostnames: True
+      EnableDnsSupport: True
+
+  PublicSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      CidrBlock: !Select [ 0, !Cidr [ !Ref VpcCidr, 12, 8 ] ]
+      VpcId: !Ref Vpc
+      MapPublicIpOnLaunch: True
+      AvailabilityZone: !Select
+        - 0
+        - Fn::GetAZs: !Ref "AWS::Region"
+
+  PublicSubnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      CidrBlock: !Select [ 1, !Cidr [ !Ref VpcCidr, 12, 8 ] ]
+      VpcId: !Ref Vpc
+      MapPublicIpOnLaunch: True
+      AvailabilityZone: !Select
+        - 1
+        - Fn::GetAZs: !Ref "AWS::Region"
+
+  PublicSubnet3:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      CidrBlock: !Select [ 2, !Cidr [ !Ref VpcCidr, 12, 8 ] ]
+      VpcId: !Ref Vpc
+      MapPublicIpOnLaunch: True
+      AvailabilityZone: !Select
+        - 2
+        - Fn::GetAZs: !Ref "AWS::Region"
+
+  WebTierSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      CidrBlock: !Select [ 3, !Cidr [ !Ref VpcCidr, 12, 8 ] ]
+      VpcId: !Ref Vpc
+      MapPublicIpOnLaunch: True
+      AvailabilityZone: !Select
+        - 0
+        - Fn::GetAZs: !Ref "AWS::Region"
+
+  WebTierSubnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      CidrBlock: !Select [ 4, !Cidr [ !Ref VpcCidr, 12, 8 ] ]
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select
+        - 1
+        - Fn::GetAZs: !Ref "AWS::Region"
+
+  WebTierSubnet3:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      CidrBlock: !Select [ 5, !Cidr [ !Ref VpcCidr, 12, 8 ] ]
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select
+        - 2
+        - Fn::GetAZs: !Ref "AWS::Region"
+
+  MiddlewareSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      CidrBlock: !Select [ 6, !Cidr [ !Ref VpcCidr, 12, 8 ] ]
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select
+        - 0
+        - Fn::GetAZs: !Ref "AWS::Region"
+
+  MiddlewareSubnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      CidrBlock: !Select [ 7, !Cidr [ !Ref VpcCidr, 12, 8 ] ]
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select
+        - 1
+        - Fn::GetAZs: !Ref "AWS::Region"
+
+  MiddlewareSubnet3:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      CidrBlock: !Select [ 8, !Cidr [ !Ref VpcCidr, 12, 8 ] ]
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select
+        - 2
+        - Fn::GetAZs: !Ref "AWS::Region"
+
+  DatabaseSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      CidrBlock: !Select [ 9, !Cidr [ !Ref VpcCidr, 12, 8 ] ]
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select
+        - 0
+        - Fn::GetAZs: !Ref "AWS::Region"
+
+  DatabaseSubnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      CidrBlock: !Select [ 10, !Cidr [ !Ref VpcCidr, 12, 8 ] ]
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select
+        - 1
+        - Fn::GetAZs: !Ref "AWS::Region"
+
+  DatabaseSubnet3:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      CidrBlock: !Select [ 11, !Cidr [ !Ref VpcCidr, 12, 8 ] ]
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select
+        - 2
+        - Fn::GetAZs: !Ref "AWS::Region"
+
+  Igw:
+    Type: "AWS::EC2::InternetGateway"
+
+  IgwToVpcAttachment:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties:
+      InternetGatewayId: !Ref Igw
+      VpcId: !Ref Vpc
+
+  NatEip:
+    Type: "AWS::EC2::EIP"
+
+  NatGw:
+    Type: "AWS::EC2::NatGateway"
+    Properties:
+      AllocationId: !GetAtt NatEip.AllocationId
+      SubnetId: !Ref PublicSubnet1
+
+  PublicRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref Vpc
+
+  PublicRoute:
+    DependsOn: IgwToVpcAttachment
+    Type: "AWS::EC2::Route"
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref Igw
+
+  PrivateRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref Vpc
+
+  PrivateRoute:
+    Type: "AWS::EC2::Route"
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGw
+
+  PubSubRtAttachment1:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PubSubRtAttachment2:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  PubSubRtAttachment3:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet3
+
+  WebSubRtAttachment1:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref WebTierSubnet1
+
+  WebSubRtAttachment2:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref WebTierSubnet2
+
+  WebSubRtAttachment3:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref WebTierSubnet3
+
+  MiddlewareSubRtAttachment1:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref MiddlewareSubnet1
+
+  MiddlewareSubRtAttachment2:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref MiddlewareSubnet2
+
+  MiddlewareSubRtAttachment3:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref MiddlewareSubnet3
+
+  DbSubRtAttachment1:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref DatabaseSubnet1
+
+  DbSubRtAttachment2:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref DatabaseSubnet2
+
+  DbSubRtAttachment3:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref DatabaseSubnet3
+
+  DbSubnetGroup:
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties:
+      DBSubnetGroupDescription: DB Subnet Group
+      SubnetIds:
+        - !Ref DatabaseSubnet1
+        - !Ref DatabaseSubnet2
+        - !Ref DatabaseSubnet3
+
+  AdminRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -  Effect: Allow
+             Action:
+               - sts:AssumeRole
+             Principal:
+               AWS: !Ref "AWS::AccountId"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AdministratorAccess"
+
+  DevRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+                - "sts:AssumeRole"
+            Principal:
+              AWS: !Ref "AWS::AccountId"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/ReadOnlyAccess"
+
+  WebTierAsgDesSizeParameter:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Type: String
+      Value: "1"
+
+  WebTierAsgMinSizeParameter:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Type: String
+      Value: "1"
+
+  WebTierAsgMaxSizeParameter:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Type: String
+      Value: "1"
+
+  MiddlewareAsgDesSizeParameter:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Type: String
+      Value: "1"
+
+  MiddlewareAsgMinSizeParameter:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Type: String
+      Value: "1"
+
+  MiddlewareAsgMaxSizeParameter:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Type: String
+      Value: "1"
+
+Outputs:
+
+  VpcId:
+    Value: !Ref Vpc
+    Export:
+      Name: VpcId
+
+  PublicSubnet1Id:
+    Value: !Ref PublicSubnet1
+    Export:
+      Name: PublicSubnet1Id
+
+  PublicSubnet2Id:
+    Value: !Ref PublicSubnet2
+    Export:
+      Name: PublicSubnet2Id
+
+  PublicSubnet3Id:
+    Value: !Ref PublicSubnet3
+    Export:
+      Name: PublicSubnet3Id
+
+  WebTierSubnet1Id:
+    Value: !Ref WebTierSubnet1
+    Export:
+      Name: WebTierSubnet1Id
+
+  WebTierSubnet2Id:
+    Value: !Ref WebTierSubnet2
+    Export:
+      Name: WebTierSubnet2Id
+
+  WebTierSubnet3Id:
+    Value: !Ref WebTierSubnet3
+    Export:
+      Name: WebTierSubnet3Id
+
+  MiddlewareSubnet1Id:
+    Value: !Ref MiddlewareSubnet1
+    Export:
+      Name: MiddlewareSubnet1Id
+
+  MiddlewareSubnet2Id:
+    Value: !Ref MiddlewareSubnet2
+    Export:
+      Name: MiddlewareSubnet2Id
+
+  MiddlewareSubnet3Id:
+    Value: !Ref MiddlewareSubnet3
+    Export:
+      Name: MiddlewareSubnet3Id
+
+  DbSubnetGroupId:
+    Value: !Ref DbSubnetGroup
+    Export:
+      Name: DbSubnetGroupId
+
+  WebTierDesSizeParameter:
+    Value: !Ref WebTierAsgDesSizeParameter
+    Export:
+      Name: WebTierDesSizeParameter
+
+  WebTierMinSizeParameter:
+    Value: !Ref WebTierAsgMinSizeParameter
+    Export:
+      Name: WebTierMinSizeParameter
+
+  WebTierMaxSizeParameter:
+    Value: !Ref WebTierAsgMaxSizeParameter
+    Export:
+      Name: WebTierMaxSizeParameter
+
+  MiddlewareDesSizeParameter:
+    Value: !Ref MiddlewareAsgDesSizeParameter
+    Export:
+      Name: MiddlewareDesSizeParameter
+
+  MiddlewareMinSizeParameter:
+    Value: !Ref MiddlewareAsgMinSizeParameter
+    Export:
+      Name: MiddlewareMinSizeParameter
+
+  MiddlewarerMaxSizeParameter:
+    Value: !Ref MiddlewareAsgMaxSizeParameter
+    Export:
+      Name: MiddlewareMaxSizeParameter

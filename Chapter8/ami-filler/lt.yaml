@@ -1,0 +1,10 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Lt:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        Fn::Transform:
+            Name: AMIFiller
+            Parameters:
+              OSFamily: "ubuntu"

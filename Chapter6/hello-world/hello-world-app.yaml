@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Hello World application
+Parameters:
+
+  ImageId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: mykey
+
+Resources:
+
+  Lc:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      InstanceType: t2.micro
+      ImageId: !Ref ImageId
+      SecurityGroups:
+        - !Ref AppSg
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref AppInstanceProfile
+      UserData:
+        Fn::Base64:
+          Fn::Join:
+            - ""
+            - - |
+                #!/bin/bash -xe
+              - |
+              - "/opt/aws/bin/cfn-init -v "
+              - " --stack "
+              - !Ref "AWS::StackName"
+              - " --resource Lc"
+              - " --configsets InstallAndRun --region "
+              - !Ref "AWS::Region"
+              - |+
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          InstallAndRun:
+            - "Configure"
+        Configure:
+          packages:
+            yum:
+              python3: []
+              python3-pip: []
+          files:
+            /opt/helloworld.py:
+              owner: root
+              group: root
+              mode: 755
+              source: !Join ["", ["https://", !ImportValue S3Bucket, ".s3.", !Ref "AWS::Region", ".", !Ref "AWS::URLSuffix", "/hello-world-flask.py" ]]
+              authentification: "role"
+            /etc/systemd/system/helloworld.service:
+              owner: root
+              group: root
+              mode: 755
+              content: |
+                [Unit]
+                Description=HelloWorld service
+                After=network.target
+                [Service]
+                Type=simple
+                User=root
+                ExecStart=/opt/helloworld.py
+                Restart=on-abort
+                [Install]
+                WantedBy=multi-user.target
+          commands:
+            installflask:
+              # This commands runs installation
+              command: "pip3 install flask"
+              # This commands runs BEFORE command above
+              # and checks if pip3 is present on system
+              # if return code is not 0 cfn-init stops
+              test: "which pip3"
+            reloadsystemd:
+              command: "systemctl daemon-reload"
+          services:
+            sysvinit:
+              helloworld:
+                enabled: "true"
+                ensureRunning: "true"
+      AWS::CloudFormation::Authentication:
+        role:
+          type: "S3"
+          buckets:
+            - !ImportValue S3Bucket
+          roleName: !Ref AppRole
+  AppRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: "sts:AssumeRole"
+            Principal:
+              Service: "ec2.amazonaws.com"
+      Policies:
+        - PolicyName: S3
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: "s3:*"
+                Resource: "*"
+
+  AppInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref AppRole
+
+  AppSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: App Sg
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          SourceSecurityGroupId: !Ref ElbSg
+          FromPort: 5000
+          ToPort: 5000
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      VpcId: !ImportValue VpcId
+
+  Elb:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Subnets:
+        - !ImportValue Subnet1Id
+        - !ImportValue Subnet2Id
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref ElbSg
+
+  ElbSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Elb Sg
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      VpcId: !ImportValue VpcId
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref Elb
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: "forward"
+          TargetGroupArn: !Ref Tg
+
+  Tg:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Port: 5000
+      Protocol: HTTP
+      VpcId: !ImportValue VpcId
+
+  Asg:
+    DependsOn: Listener
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      MaxSize: "1"
+      MinSize: "1"
+      DesiredCapacity: "1"
+      VPCZoneIdentifier:
+        - !ImportValue Subnet1Id
+        - !ImportValue Subnet2Id
+      LaunchConfigurationName: !Ref Lc
+      TargetGroupARNs:
+        - !Ref Tg

@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  S3Bucket:
+    Type: String
+    Default: "masteringcfn"
+  S3Key:
+    Type: String
+    Default: "lambda-macro.zip"
+Resources:
+  MacroFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Action:
+              - "sts:AssumeRole"
+            Effect: Allow
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+
+  MacroFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: standard-app.lambda_handler
+      MemorySize: 128
+      Runtime: python3.7
+      Timeout: 30
+      Role: !GetAtt MacroFunctionRole.Arn
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !Ref S3Key
+
+  Macro:
+    Type: AWS::CloudFormation::Macro
+    Properties:
+      Name: StandardApplication
+      FunctionName: !GetAtt MacroFunction.Arn

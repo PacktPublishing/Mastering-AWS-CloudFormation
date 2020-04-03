@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Globals:
+  Function:
+    Timeout: 300
+    Runtime: python3.8
+    Handler: app.lambda_handler
+    Environment:
+      Variables:
+        PARTIES_TABLE: !Ref PartiesTable
+        GUESTS_TABLE: !Ref GuestsTable
+        REPORTS_BUCKET: !Ref ReportsBucket
+
+Resources:
+  RegistrationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: registration/
+      Events:
+        register:
+          Type: Api
+          Properties:
+            Path: /register
+            Method: post
+      Policies:
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:PutItem
+              - dynamodb:GetItem
+            Resource:
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${PartiesTable}"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${GuestsTable}"
+
+  PartiesTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: PartyName
+        Type: String
+
+  GuestsTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: GuestName
+        Type: String
+
+  ReportsBucket:
+    Type: AWS::S3::Bucket
+
+  ReportingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: reporting/
+      Runtime: python3.8
+      Policies:
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:Scan
+            Resource:
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${PartiesTable}"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${GuestsTable}"
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetBucketAcl
+              - s3:PutObject
+            Resource:
+              - !GetAtt ReportsBucket.Arn
+              - !Sub "${ReportsBucket.Arn}/*"
+      Events:
+        scheduled:
+          Type: Schedule
+          Properties:
+            Schedule: "rate(1 day)"
+
+Outputs:
+  RegisterApi:
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/register/"
+  RegisterFunction:
+    Value: !GetAtt RegistrationFunction.Arn
+  ReportingFunction:
+    Value: !GetAtt ReportingFunction.Arn
+  PartiesTable:
+    Value: !Ref PartiesTable
+  GuestsTable:
+    Value: !Ref GuestsTable
+  ReportsBucket:
+    Value: !Ref ReportsBucket

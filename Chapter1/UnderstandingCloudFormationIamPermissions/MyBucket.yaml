@@ -1,0 +1,5 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: This is my first bucket
+Resources:
+  MyBucket:
+    Type: "AWS::S3::Bucket"

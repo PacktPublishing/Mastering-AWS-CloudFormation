@@ -1,0 +1,28 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: StackSet IAM roles
+
+Parameters:
+  AdministratorAccountId:
+    Type: String
+    AllowedPattern: '(\d+)$'
+
+Resources:
+
+  StackSetExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AWSCloudFormationStackSetExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          Effect: Allow
+          Action: "sts:AssumeRole"
+          Principal:
+            AWS:
+              Fn::Join:
+                - ""
+                - - "arn:aws:iam::"
+                  - !Ref AdministratorAccountId
+                  - ":root"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AdministratorAccess"

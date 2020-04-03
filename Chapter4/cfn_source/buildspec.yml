@@ -1,0 +1,21 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.8
+    commands:
+      - pip install awscli cfn-lint
+  build:
+    commands:
+      - aws cloudformation validate-template --template-body file://core.yaml
+      - cfn-lint core.yaml
+  post_build:
+    commands:
+      - aws cloudformation deploy --template-file core.yaml --stack-name core-tmp --capabilities CAPABILITY_NAMED_IAM --role-arn $CFN_ROLE
+      - python tests/core_subnets.py core-tmp
+    finally:
+      - aws cloudformation delete-stack --stack-name core-tmp --role-arn $CFN_ROLE
+artifacts:
+  files:
+    - core.yaml

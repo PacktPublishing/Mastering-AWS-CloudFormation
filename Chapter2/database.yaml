@@ -1,0 +1,111 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Database template
+
+Parameters:
+  Environment:
+    Type: String
+    Default: test
+    AllowedValues: [ "test", "prod" ]
+
+Conditions:
+  ProdEnv: !Equals [!Ref Environment, "prod"]
+  TestEnv: !Equals [!Ref Environment, "test"]
+
+Resources:
+
+  DatabaseSecret:
+    Type: "AWS::SecretsManager::Secret"
+    Properties:
+      Description: Database credentials
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "dbuser"}'
+        GenerateStringKey: "password"
+        PasswordLength: 16
+        ExcludeCharacters: '"@/\'
+      Tags:
+        - Key: Env
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Join [ "-", [ !Ref Environment, !Ref "AWS::StackName", "secret" ] ]
+
+  DatabaseSg:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: Database security group
+      VpcId: !ImportValue VpcId
+      Tags:
+        - Key: Env
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Join [ "-", [ !Ref Environment, !Ref "AWS::StackName", "sg" ] ]
+
+  TestDatabase:
+    Condition: TestEnv
+    DeletionPolicy: Snapshot
+    Type: "AWS::RDS::DBCluster"
+    Properties:
+      Engine: aurora
+      EngineMode: serverless
+      DBSubnetGroupName: !ImportValue DbSubnetGroupId
+      ScalingConfiguration:
+        AutoPause: True
+        MaxCapacity: 1
+        MinCapacity: 1
+        SecondsUntilAutoPause: 300
+      MasterUsername: !Join [ ":", [ "{{resolve:secretsmanager", !Ref DatabaseSecret, "SecretString", "username}}" ] ]
+      MasterUserPassword: !Join [ ":", [ "{{resolve:secretsmanager", !Ref DatabaseSecret, "SecretString", "password}}" ] ]
+      VpcSecurityGroupIds:
+        - !Ref DatabaseSg
+      Tags:
+        - Key: Env
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Join [ "-", [ !Ref Environment, !Ref "AWS::StackName", "cluster" ] ]
+
+  ProdDatabase:
+    Condition: ProdEnv
+    DeletionPolicy: Retain
+    Type: "AWS::RDS::DBCluster"
+    Properties:
+      Engine: aurora
+      EngineMode: serverless
+      DBSubnetGroupName: !ImportValue DbSubnetGroupId
+      ScalingConfiguration:
+        AutoPause: True
+        MaxCapacity: 1
+        MinCapacity: 1
+        SecondsUntilAutoPause: 300
+      MasterUsername: !Join [ ":", [ "{{resolve:secretsmanager", !Ref DatabaseSecret, "SecretString", "username}}" ] ]
+      MasterUserPassword: !Join [ ":", [ "{{resolve:secretsmanager", !Ref DatabaseSecret, "SecretString", "password}}" ] ]
+      VpcSecurityGroupIds:
+        - !Ref DatabaseSg
+      Tags:
+        - Key: Env
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Join [ "-", [ !Ref Environment, !Ref "AWS::StackName", "cluster" ] ]
+
+  DatabaseSgIngressRule:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      IpProtocol: tcp
+      FromPort: !If [ProdEnv, !GetAtt ProdDatabase.Endpoint.Port, !GetAtt TestDatabase.Endpoint.Port]
+      ToPort:  !If [ProdEnv, !GetAtt ProdDatabase.Endpoint.Port, !GetAtt TestDatabase.Endpoint.Port]
+      SourceSecurityGroupId: !ImportValue MiddlewareInstanceSg
+      GroupId: !Ref DatabaseSg
+
+Outputs:
+  DatabaseEndpointAddress:
+    Value: !If [ProdEnv, !GetAtt ProdDatabase.Endpoint.Address, !GetAtt TestDatabase.Endpoint.Address]
+    Export:
+      Name: DatabaseEndpointAddress
+
+  DatabseEndpointPort:
+    Value: !If [ProdEnv, !GetAtt ProdDatabase.Endpoint.Port, !GetAtt TestDatabase.Endpoint.Port]
+    Export:
+      Name: DatabseEndpointPort
+
+  DbCredentials:
+    Value: !Ref DatabaseSecret
+    Export:
+      Name: DbCredentials

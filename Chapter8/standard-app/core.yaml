@@ -1,0 +1,172 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: This is the Core Infrastructure template
+Parameters:
+  VpcCidr:
+    Type: String
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    Default: 10.0.0.0/16
+
+
+Resources:
+
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+
+  ExecRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Sid: AllowECSTaskExecution
+      Policies:
+        - PolicyDocument:
+            Statement:
+              - Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect: Allow
+                Resource:
+                  - '*'
+                Sid: AllowECSTaskExecution
+          PolicyName: ecs
+
+  Igw:
+    Type: AWS::EC2::InternetGateway
+
+  IgwAttach:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref 'Igw'
+      VpcId: !Ref 'Vpc'
+
+
+  AppSubnet01:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Select [ 0, !Cidr [ !Ref VpcCidr, 12, 8 ] ]
+      MapPublicIpOnLaunch: True
+      VpcId: !Ref 'Vpc'
+
+  AppSubnet02:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Select [ 1, !Cidr [ !Ref VpcCidr, 12, 8 ] ]
+      MapPublicIpOnLaunch: True
+      VpcId: !Ref 'Vpc'
+
+
+  AppSubnetAssoc01:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref 'PublicRouteTable'
+      SubnetId: !Ref 'AppSubnet01'
+
+  AppSubnetAssoc02:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref 'PublicRouteTable'
+      SubnetId: !Ref 'AppSubnet02'
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IgwAttach
+    Properties:
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref 'Igw'
+      RouteTableId: !Ref 'PublicRouteTable'
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'Vpc'
+
+  PublicSubnet01:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Select [ 2, !Cidr [ !Ref VpcCidr, 12, 8 ] ]
+      MapPublicIpOnLaunch: True
+      VpcId: !Ref 'Vpc'
+
+  PublicSubnet02:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Select [ 3, !Cidr [ !Ref VpcCidr, 12, 8 ] ]
+      MapPublicIpOnLaunch: True
+      VpcId: !Ref 'Vpc'
+
+  PublicSubnetAssoc01:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref 'PublicRouteTable'
+      SubnetId: !Ref 'PublicSubnet01'
+
+  PublicSubnetAssoc02:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref 'PublicRouteTable'
+      SubnetId: !Ref 'PublicSubnet02'
+
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref 'VpcCidr'
+      EnableDnsHostnames: True
+      EnableDnsSupport: True
+
+Outputs:
+
+  FargateCluster:
+    Description: Fargate Cluster name
+    Value: !Ref 'EcsCluster'
+    Export:
+      Name: EcsCluster
+
+  ExecRole:
+    Description: Fargate Task Exec Role
+    Value: !GetAtt 'ExecRole.Arn'
+    Export:
+      Name: ExecRole
+
+  AppSubnet1:
+    Description: App Subnet 1 ID
+    Value: !Ref 'AppSubnet01'
+    Export:
+      Name: AppSubnet01
+
+  AppSubnet2:
+    Description: App Subnet 2 ID
+    Value: !Ref 'AppSubnet02'
+    Export:
+      Name: AppSubnet02
+
+
+  PublicSubnet1:
+    Description: PublicSubnet1Id
+    Value: !Ref 'PublicSubnet01'
+    Export:
+      Name: PublicSubnet01
+
+  PublicSubnet2:
+    Description: PublicSubnet2Id
+    Value: !Ref 'PublicSubnet02'
+    Export:
+      Name: PublicSubnet02
+
+  VpcId:
+    Description: VpcID
+    Value: !Ref 'Vpc'
+    Export:
+      Name: VpcId

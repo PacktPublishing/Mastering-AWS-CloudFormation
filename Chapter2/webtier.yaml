@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: WebTier template
+
+Parameters:
+  Environment:
+    Type: String
+    Default: test
+    AllowedValues: [ "test", "prod" ]
+  ImageId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: mykey
+
+Resources:
+
+  WebTierLoadBalancer:
+    Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    Properties:
+      Type: application
+      Subnets:
+        - !ImportValue PublicSubnet1Id
+        - !ImportValue PublicSubnet2Id
+        - !ImportValue PublicSubnet3Id
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref WebTierLbSg
+      Tags:
+        - Key: Env
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Join [ "-", [ !Ref Environment, !Ref "AWS::StackName", "lb" ] ]
+
+  WebInstanceLaunchTemplate:
+    Type: "AWS::EC2::LaunchTemplate"
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref ImageId
+        InstanceType: t3.micro
+        KeyName: !Ref KeyName
+        SecurityGroupIds:
+          - !Ref WebInstanceSg
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Env
+                Value: !Ref Environment
+              - Key: Name
+                Value: !Join [ "-", [ !Ref Environment, !Ref "AWS::StackName", "lt" ] ]
+
+  WebTierLbSg:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: LoadBalancer Security Group
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          CidrIp: 0.0.0.0/0
+          FromPort: 80
+          ToPort: 80
+      VpcId: !ImportValue VpcId
+      Tags:
+        - Key: Env
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Join [ "-", [ !Ref Environment, !Ref "AWS::StackName", "lb-sg" ] ]
+
+  WebInstanceSg:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: WebTier Instance SG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          SourceSecurityGroupId: !Ref WebTierLbSg
+          FromPort: 80
+          ToPort: 80
+      VpcId: !ImportValue VpcId
+      Tags:
+        - Key: Env
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Join [ "-", [ !Ref Environment, !Ref "AWS::StackName", "inst-sg" ] ]
+
+  WebTierAsg:
+    DependsOn: WebTierLbListener
+    Type: "AWS::AutoScaling::AutoScalingGroup"
+    Properties:
+      MaxSize: !Join [":", [ "{{resolve:ssm", !ImportValue WebTierMaxSizeParameter, "1}}"]]
+      MinSize: !Join [":", [ "{{resolve:ssm", !ImportValue WebTierMinSizeParameter, "1}}"]]
+      DesiredCapacity: !Join [":", [ "{{resolve:ssm", !ImportValue WebTierDesSizeParameter, "1}}"]]
+      VPCZoneIdentifier:
+        - !ImportValue WebTierSubnet1Id
+        - !ImportValue WebTierSubnet2Id
+        - !ImportValue WebTierSubnet3Id
+      LaunchTemplate:
+        LaunchTemplateId: !Ref WebInstanceLaunchTemplate
+        Version: "1"
+      TargetGroupARNs:
+        - !Ref WebTierTg
+      Tags:
+        - Key: Env
+          Value: !Ref Environment
+          PropagateAtLaunch: True
+        - Key: Name
+          Value: !Join [ "-", [ !Ref Environment, !Ref "AWS::StackName", "asg" ] ]
+          PropagateAtLaunch: True
+
+  WebTierLbListener:
+    Type: "AWS::ElasticLoadBalancingV2::Listener"
+    Properties:
+      LoadBalancerArn: !Ref WebTierLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: "forward"
+          TargetGroupArn: !Ref WebTierTg
+
+  WebTierTg:
+    Type: "AWS::ElasticLoadBalancingV2::TargetGroup"
+    Properties:
+      Port: 80
+      Protocol: HTTP
+      VpcId: !ImportValue VpcId
+      Tags:
+        - Key: Env
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Join [ "-", [ !Ref Environment, !Ref "AWS::StackName", "lb-tg" ] ]
+
+Outputs:
+  WebInstanceSg:
+    Value: !Ref WebTierLbSg
+    Export:
+      Name: WebInstanceSg

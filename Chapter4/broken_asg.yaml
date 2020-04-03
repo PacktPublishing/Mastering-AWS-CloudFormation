@@ -1,0 +1,78 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  AmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Use it to provide default vpc
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Use it to provide a list of subnetids
+
+Resources:
+
+  Lc:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: t2.micro
+      UserData: # can you find a mistake in this UserData?
+        Fn::Base64: |
+          #!/bin/bash
+          yum -y install yolo
+          systemctl start yolo
+      SecurityGroups:
+        - !Ref Sg
+
+  Sg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: not secure sg
+      SecurityGroupIngress:
+        - IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+      VpcId: !Ref VpcId
+
+  Asg:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      MaxSize: "1"
+      MinSize: "1"
+      LaunchConfigurationName: !Ref Lc
+      AvailabilityZones: !GetAZs
+      HealthCheckGracePeriod: 30
+      HealthCheckType: ELB
+      TargetGroupARNs:
+        - !Ref Tg
+
+  Tg:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref VpcId
+      UnhealthyThresholdCount: 5
+
+  Elb:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref Sg
+      Subnets: !Ref SubnetIds
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      Port: 80
+      Protocol: HTTP
+      LoadBalancerArn: !Ref Elb
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref Tg
+
+Outputs:
+  Dns:
+    Value: !GetAtt Elb.DNSName
